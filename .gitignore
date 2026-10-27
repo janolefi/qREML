@@ -6,3 +6,5 @@ other/
 data/other_data/
 case_studies/old
 simulation_experiments/old/
+.positai
+revision_results/
