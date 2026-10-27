@@ -108,9 +108,14 @@ if(run_sim){
       set.seed(n + l)
       sim <- simHMM(n)
 
-      ## qREML nonparametric fit (25 B-splines per state, 2nd-order difference penalty)
+      ## qREML nonparametric fit: cubic B-splines with 2nd-order difference penalty.
+      ## Number of basis functions k_l chosen for a constant knot spacing of ~0.4
+      ## (spacing ~ range / (k - 3)), at least 25. A fixed k would make the resolution depend
+      ## on the most extreme observations: heavy-tailed data widen the knot range and
+      ## coarsen the basis near the sharp mode of state 1.
+      k_l = max(25, ceiling(diff(range(sim$x)) / 0.4) + 3) # knot spacing ~0.4, at least 25 basis functions
       smoothDens = suppressMessages(smooth_dens_construct(
-        data.frame(x = sim$x), par = list(x = list(mean = c(1, 3.5), sd = c(1, 1))), k = 25))
+        data.frame(x = sim$x), par = list(x = list(mean = c(1, 3.5), sd = c(1, 1))), k = k_l))
       xseq = smoothDens$xseq$x # 500 point grid over knot range for metrics
       dat = list(x = sim$x, Z = smoothDens$Z$x, S = smoothDens$S$x, lambda = rep(20, 2))
       par = list(eta = rep(-2, 2), beta = smoothDens$coef$x)
@@ -124,7 +129,7 @@ if(run_sim){
       states = viterbi(mod)
       ev = evaluate(xseq, fhat, states, sim$s)
       res[[length(res)+1]] = cbind(T = n, rep = l, method = "qREML", time = time,
-                                   iter = mod$iter, converged = mod$converged,
+                                   iter = mod$iter, converged = mod$converged, k = k_l,
                                    edf = unlist(mod$edf)[ev$perm],
                                    lambda = mod$lambda[ev$perm], ev)
       dens[[l]] = list(xseq = xseq, fhat = fhat)
@@ -144,7 +149,7 @@ if(run_sim){
         states = viterbi(rep_l)
         res[[length(res)+1]] = cbind(T = n, rep = l, method = ifelse(oracle, "skew t (oracle)", "Gaussian"),
                                      time = time, iter = NA, converged = opt$convergence == 0,
-                                     edf = NA, lambda = NA,
+                                     edf = NA, lambda = NA, k = NA,
                                      evaluate(xseq, fhat, states, sim$s))
       }
       gc() # R + RTMB doesn't do good memory management
@@ -175,13 +180,14 @@ tab
 
 aggregate(converged ~ method + T, data = res[res$state == 1, ], FUN = mean)
 
+range(res$k, na.rm = TRUE)
+
 # Visualizing results -----------------------------------------------------
 
 xplot = seq(-3, 9, length = 500)
 
-## estimated densities from 50 replicates vs truth (qREML)
+## estimated densities from 200 replicates vs truth (qREML)
 # pdf("./simulation_experiments/figs/density_simulation.pdf", width = 8, height = 4)
-
 par(mfrow = c(1,2), mar = c(5,4,3,1) + 0.1)
 for(m in 1:2){
   plot(NA, xlim = range(xplot), ylim = c(0, 0.8), bty = "n", main = paste0("T = ", Ts[m]),
@@ -198,17 +204,15 @@ for(m in 1:2){
 }
 legend("topright", legend = c("True densities", "State 1", "State 2"),
        col = c("black", color), lwd = 1, bty = "n")
-
 # dev.off()
 
 ## Hellinger distance by method and T
 # pdf("./simulation_experiments/figs/density_simulation_hellinger.pdf", width = 8, height = 4)
-
 par(mfrow = c(1,2), mar = c(5,4,3,1) + 0.1)
 for(j in 1:2){
   boxplot(Hellinger ~ method + T, data = res[res$state == j,], main = paste("State", j),
           col = alpha(color[j], 0.5), border = color[j], frame = FALSE,
           xlab = "", ylab = "Hellinger distance", las = 2, cex.axis = 0.7)
 }
-
 # dev.off()
+
