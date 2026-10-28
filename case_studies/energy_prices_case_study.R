@@ -8,12 +8,9 @@
 ## hmmTMB) for comparison.
 
 ## Packages
-# install.packages("RTMB")
-# install.packages("MSwM")
+# install.packages(c("MSwM", "RTMB, "LaMa", "hmmTMB", "scales"))
 library(MSwM) # data
-# devtools::install_github("janoleko/LaMa") # development version
 library(LaMa) # HMM functions and qreml
-# install.packages("scales")
 library(scales) # just for transparency in plotting
 source("./case_studies/utils.R")
 

@@ -37,7 +37,7 @@ edf_at <- function(obj, nll, random, S, lsp = "log_lambda"){
 }
 
 
-
+## Color palette for the sun cycle (24 hours, 30-minute intervals)
 sun_cycle_colors <- c(
   "#0b0d3e",  # 00:00 - Midnight (Night)
   "#0d1046",  # 00:30

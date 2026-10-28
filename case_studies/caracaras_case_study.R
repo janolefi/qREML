@@ -7,12 +7,11 @@
 ## the same model by full REML and marginal ML for comparison.
 
 ## Packages
-# install.packages("RTMB")
-# install.packages("LaMa")
+# install.packages(c("RTMB", "LaMa", "scales"))
 library(LaMa)
-# install.packages("scales")
 library(scales) # for transparent colors
 source("./case_studies/utils.R")
+
 
 ## Colors
 color <- LaMaColors(3)

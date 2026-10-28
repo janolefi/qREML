@@ -9,8 +9,7 @@
 ## (via hmmTMB) for comparison.
 
 ## Packages
-# install.packages("RTMB")
-# devtools::install_github("janolefi/LaMa") # development version
+# install.packages(c("RTMB, "LaMa", "hmmTMB", "scales"))
 library(LaMa)
 library(scales) # for transparent colors
 source("./case_studies/utils.R")
