@@ -41,12 +41,12 @@ pnll <- function(par) {
   # penalty() does the heavy lifting and reports to qreml
   # (lambda has one entry per smooth: 2 for the mean, 2 for the sd)
   -forward("stationary", Gamma, allprobs) +
-    penalty(list(betaspline, alphaspline), S, lambda)
+    penalty(list(betaspline, alphaspline), S, sp)
 }
 
 ## Prepare model matrices (uses mgcv under the hood)
 nb <- 15 # number of basis functions
-modmat <- make_matrices(~ s(Oil, k = nb, bs = "ps"), energy) # model matrices Z and S
+modmat <- modmat(~ s(Oil, k = nb, bs = "ps"), energy) # model matrices Z and S
 Z <- modmat$Z # design matrix
 S <- modmat$S # penalty matrix (list)
 
@@ -63,7 +63,7 @@ par <- list(eta = rep(-4, 2), # tpm parameters
 
 ## Data, model matrices and initial penalty strength
 dat <- list(price = energy$Price, Z = Z, S = S,
-            lambda = rep(1e5, 4))
+            sp = rep(1e5, 4))
 
 ## Fit the model via qreml
 t <- Sys.time()
@@ -224,3 +224,4 @@ hmm$fit(silent = TRUE)
 (time_hmmTMB <- Sys.time() - t)
 
 hmm$lambda()$obs # estimated smoothing parameters
+

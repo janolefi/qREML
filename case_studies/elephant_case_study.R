@@ -120,14 +120,14 @@ pnll <- function(par) {
   Gamma <- tpm(cbind(beta0, betaspline), Z) # intercepts plus spline coefficients
   allprobs <- statedens(step, dgamma2, mu, sigma) * statedens(angle, dvm, 0, kappa)
   -forward("stationary", Gamma, allprobs, tod = tod) +
-    penalty(betaspline, S, lambda) # 0.5 * lambda t(b) %*% S %*% b for each b
+    penalty(betaspline, S, sp) # 0.5 * lambda t(b) %*% S %*% b for each b
 }
 
 ## Prepare model matrices (cyclic P-spline basis)
 nb <- 10 # number of basis functions
-modmat <- make_matrices(~ s(tod, bs = "cp", k = nb),
-                        data = data.frame(tod = (1:12)*2-1),
-                        knots = list(tod = c(0, 24))) # where to wrap the basis
+modmat <- modmat(~ s(tod, bs = "cp", k = nb),
+                 data = data.frame(tod = (1:12)*2-1),
+                 knots = list(tod = c(0, 24))) # where to wrap the basis
 Z <- modmat$Z # spline design matrix
 S <- modmat$S # spline penalty matrix (list)
 
@@ -142,7 +142,7 @@ par <- list(log_mu = log(c(0.35, 1.1)),
 dat <- list(step = data$step, angle = data$angle,
             tod = data$tod,
             N = 2, Z = Z, S = S,
-            lambda = rep(1e5, 2)) # initial smoothing parameters, one per smooth
+            sp = rep(1e5, 2)) # initial smoothing parameters, one per smooth
 
 ## Fit the model via qreml
 t <- Sys.time()

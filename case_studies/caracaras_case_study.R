@@ -56,7 +56,7 @@ legend("topright", legend = c("Resting", "Low activity", "High activity"),
 par <- list(mu = c(-5, -4.5, -3, -1.5), # state-dependent mean
             log_sigma = rep(log(0.3), 4), # state-dependent sd
             eta = rep(-2, 12)) # tpm parameters
-dat <- list(x = data$logVDBA, N = 4)
+dat$N <- 4
 
 obj4 <- MakeADFun(nll, par, silent = TRUE)
 opt4 <- nlminb(obj4$par, obj4$fn, obj4$gr)
@@ -85,38 +85,24 @@ pnll <- function(par) {
   getAll(par, dat)
   Gamma <- tpm(eta) # transition probability matrix
 
-  ## Compute mixture weights (multinomial logit)
-  alpha <- exp(cbind(beta, rep(0, N))) # last column fixed to zero
-  alpha <- alpha / rowSums(alpha); REPORT(alpha)
-
-  ## Compute state-dependent densities
-  allprobs <- matrix(1, nrow(Z), N) # missing observations keep probability 1
-  ind <- which(!is.na(x))
-  allprobs[ind,] <- Z[ind,] %*% t(alpha) # sum over weighted basis functions
+  # n x N matrix of state-dependent P-spline densities
+  allprobs <- dens$density(beta); REPORT(beta)
 
   # penalty() adds the smoothness penalty on beta and reports it to qreml()
-  -forward("stationary", Gamma, allprobs) + penalty(beta, S, lambda)
+  -forward("stationary", Gamma, allprobs) + penalty(beta, dens$S, sp)
 }
-
 
 ## Prepare model matrices and initial coefficients for the smooth densities
 N <- 3
-smoothDens <- smooth_dens_construct(
-  data["logVDBA"],
-  par = list(logVDBA = list(mean = c(-5, -4, -2.5), sd = rep(1.5, 3))), # initial densities
+dens <- smoothdens(
+  data$logVDBA,
+  par = list(mean = c(-5, -4, -2.5), sd = rep(1.5, 3)), # initial shape of densities
   k = 30 # number of basis functions
 )
 
-Z <- smoothDens$Z$logVDBA # design matrix
-S <- smoothDens$S$logVDBA # penalty matrix
-Z_p <- smoothDens$Z_predict$logVDBA # prediction design matrix
-xseq <- smoothDens$xseq$logVDBA # prediction grid
-beta <- smoothDens$coef$logVDBA # initial coefficients for basis functions
-
-par <- list(eta = rep(-3, N*(N-1)), beta = beta)
-dat <- list(x = data$logVDBA,
-            Z = Z, N = 3, S = S,
-            lambda = rep(100, 3)) # initial smoothing parameters, one per state
+par <- list(eta = rep(-3, N*(N-1)), beta = dens$coef)
+dat <- list(dens = dens,
+            sp = rep(100, 3)) # initial smoothing parameters, one per state
 
 ## Fit the model via qreml
 t <- Sys.time()
@@ -127,7 +113,6 @@ summary(mod)
 round(mod$lambda, 2) # estimated smoothing parameters
 
 ## Extract parameters and decode states
-alpha <- mod$alpha # weight matrix
 delta <- mod$delta # stationary distribution
 mod$states <- viterbi(mod) # most likely state sequence
 
@@ -135,20 +120,21 @@ mod$states <- viterbi(mod) # most likely state sequence
 AIC(mod, mod4, mod3)
 BIC(mod, mod4, mod3)
 
+## Predict state-dependent densities on a grid for visualisation
+dens_p <- predict(dens, coef = mod$beta)
+x_grid <- dens_p$x
+dens_p <- dens_p$density
+mardens_p <- rowSums(dens_p * matrix(delta, nrow(dens_p), N, byrow = TRUE)) # marginal density
 
 ## Visualise results
 # pdf("./case_studies/figs/caracara_log.pdf", width = 8.5, height = 4)
-
-Dens <- Z_p %*% t(alpha) # state-dependent densities on the prediction grid
-mDens <- rowSums(Dens * matrix(delta, nrow(Dens), N, byrow = TRUE)) # marginal density
 par(mfrow = c(1,2), mar = c(5,4,3.5,1) + 0.1)
 
 # state-dependent (weighted) and marginal densities on top of the data histogram
 hist(data$logVDBA, prob = TRUE, breaks = 50, bor = "white",
      main = "", xlab = "log(VeDBA)", ylab = "Density")
-for(j in 1:N) lines(xseq, delta[j] * Dens[,j], col = color[j], lwd = 2)
-lines(xseq, mDens, col = 1, lty = 2, lwd = 2)
-
+for(j in 1:N) lines(x_grid, delta[j] * dens_p[,j], col = color[j], lwd = 2)
+lines(x_grid, mardens_p, col = 1, lty = 2, lwd = 2)
 legend("topright", legend = c("Resting", "Low activity", "High activity"),
        col = color, lwd = 2, bty = "n")
 
@@ -164,7 +150,7 @@ plot(data$logVDBA[plotind], pch = 16, cex = 0.8, col = alpha(color[mod$states[pl
 
 ## Get the rank and log-determinant of the penalty matrix
 # needed for proper REML likelihood evaluation (happens inside qreml() as well)
-g <- LaMa:::gen_inverse(S)
+g <- LaMa:::gen_inverse(dens$S)
 rank_S <- g$rank
 logdet_S <- g$logdet
 
@@ -174,22 +160,17 @@ jnll <- function(par) {
   getAll(par, dat)
   Gamma <- tpm(eta) # transition probability matrix
 
-  ## Compute mixture weights (multinomial logit)
-  alpha <- exp(cbind(beta, rep(0, N))) # last column fixed to zero
-  alpha <- alpha / rowSums(alpha)
-  REPORT(alpha) # report alpha for convenience later
-
-  ## Compute state-dependent densities
-  allprobs <- matrix(1, nrow(Z), N)
-  ind <- which(!is.na(x))
-  allprobs[ind,] <- Z[ind,] %*% t(alpha) # sum over weighted basis functions
+  # evaluate P-spline density
+  allprobs <- dens$density(beta) # n x N matrix of state-dependent densities
+  REPORT(beta)
+  
   nll <- -forward("stationary", Gamma, allprobs)
 
   ## Add negative log-density of the (improper) Gaussian random effects
   lambda <- exp(log_lambda); REPORT(lambda) # penalty strengths must be positive
   for(i in 1:N){
     # one penalty per state: 0.5 * (lambda b'Sb - rank(S) log(lambda) - log|S|_+ + rank(S) log(2 pi))
-    nll <- nll + 0.5 * (lambda[i] * sum(beta[i,] * (S %*% beta[i,])) -
+    nll <- nll + 0.5 * (lambda[i] * sum(beta[i,] * (dens$S %*% beta[i,])) -
                           rank_S * log(lambda[i]) - logdet_S + rank_S * log(2 * pi))
   }
   nll
@@ -197,9 +178,9 @@ jnll <- function(par) {
 
 ## Initial parameters and data
 par <- list(eta = rep(-3, N*(N-1)),
-            beta = beta,
+            beta = dens$coef,
             log_lambda = rep(log(100), 3))
-dat <- list(x = data$logVDBA, Z = Z, N = 3, S = S)
+dat <- list(dens = dens, N = 3)
 
 ## Full REML fit
 # everything except log_lambda is integrated out by the Laplace approximation
@@ -211,7 +192,7 @@ opt_reml <- nlminb(obj_reml$par, obj_reml$fn, obj_reml$gr)
 
 mod_reml <- lama(obj_reml)
 mod_reml$lambda # estimated smoothing parameters
-edf_at(obj_reml, jnll, random = "beta", S = S) # estimated effective degrees of freedom
+edf_at(obj_reml, jnll, random = "beta", S = dens$S) # estimated effective degrees of freedom
 
 
 ## Marginal ML fit
@@ -223,4 +204,5 @@ opt_ml <- nlminb(obj_ml$par, obj_ml$fn, obj_ml$gr)
 
 mod_ml <- lama(obj_ml)
 mod_ml$lambda # estimated smoothing parameters
-edf_at(obj_ml, jnll, random = "beta", S = S) # estimated effective degrees of freedom
+edf_at(obj_ml, jnll, random = "beta", S = dens$S) # estimated effective degrees of freedom
+
